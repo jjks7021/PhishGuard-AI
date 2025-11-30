@@ -1,6 +1,5 @@
 (() => {
   const FLOATING_ID = "pg-floating-control";
-  const API_BASE = "http://49.50.135.32:8000/api";
   const EXT_BASE = chrome.runtime.getURL("");
 
   // ✅ 1. 페이지 진입 시 URL 검사
@@ -13,7 +12,7 @@
     console.warn("[PhishingGuard] CHECK_URL 전송 실패:", e);
   }
 
-  // ✅ 2. client_id 가져오기
+  // ✅ 2. client_id 가져오기 (현재는 직접 쓰진 않지만 남겨둠)
   function getClientId() {
     return new Promise(resolve => {
       chrome.storage.sync.get(["client_id"], data => {
@@ -263,72 +262,74 @@
     });
 
     // 📂 목록
-    listBtn.addEventListener("click", async () => {
+    listBtn.addEventListener("click", () => {
       if (listPanel.style.display === "none") {
         listPanel.style.display = "block";
         box.classList.remove('minimized');
         minimizeBtn.textContent = "－";
         minimizeBtn.style.color = "#333";
         chrome.storage.sync.set({ pg_minimized: false });
-        await loadMyBlockedUrls(listInner);
+        loadMyBlockedUrls(listInner);
       } else {
         listPanel.style.display = "none";
       }
     });
 
-    // 🔁 해제
-    unblockSelectedBtn.addEventListener("click", async () => {
+    // 🔁 해제 (여러 개 한 번에)
+    unblockSelectedBtn.addEventListener("click", () => {
       const checkboxes = listInner.querySelectorAll("input.pg-url-check:checked");
       if (checkboxes.length === 0) return;
-      const clientId = await getClientId();
-      const tasks = [];
+
+      const urls = [];
       checkboxes.forEach(cb => {
-        const url = cb.dataset.url;
-        tasks.push(
-          fetch(`${API_BASE}/remove-override`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ client_id: clientId, url })
-          })
-        );
+        urls.push(cb.dataset.url);
       });
-      try {
-        await Promise.all(tasks);
-        await loadMyBlockedUrls(listInner);
-      } catch (e) {
-        console.error("[PhishingGuard] 선택 해제 에러:", e);
-      }
+
+      chrome.runtime.sendMessage(
+        { type: "PG_REMOVE_OVERRIDE_MULTI", urls },
+        (resp) => {
+          if (!resp || resp.error) {
+            console.error("[PhishingGuard] 선택 해제 에러:", resp);
+            return;
+          }
+          loadMyBlockedUrls(listInner);
+        }
+      );
     });
   }
 
-  // 📥 목록 로드
-  async function loadMyBlockedUrls(container) {
+  // 📥 목록 로드 (background에 요청)
+  function loadMyBlockedUrls(container) {
     container.textContent = "로딩 중...";
     try {
-      const clientId = await getClientId();
-      const res = await fetch(`${API_BASE}/my-blocked-urls`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client_id: clientId })
-      });
-      const data = await res.json();
-      const urls = data.urls || [];
-      container.innerHTML = "";
+      chrome.runtime.sendMessage(
+        { type: "PG_GET_MY_BLOCKED_URLS" },
+        (data) => {
+          if (!data || data.error) {
+            console.error("[PhishingGuard] 목록 로드 실패(백그라운드 에러)", data);
+            container.textContent = "로드 실패";
+            return;
+          }
 
-      if (urls.length === 0) {
-        container.textContent = "차단 목록 없음";
-        return;
-      }
+          const urls = data.urls || [];
+          container.innerHTML = "";
 
-      urls.forEach(url => {
-        const item = document.createElement("label");
-        item.className = "pg-url-item";
-        item.innerHTML = `
-          <input type="checkbox" class="pg-url-check" data-url="${url}">
-          <span title="${url}">${url}</span>
-        `;
-        container.appendChild(item);
-      });
+          if (urls.length === 0) {
+            container.textContent = "차단 목록 없음";
+            return;
+          }
+
+          urls.forEach(url => {
+            const item = document.createElement("label");
+            item.className = "pg-url-item";
+            item.innerHTML = `
+              <input type="checkbox" class="pg-url-check" data-url="${url}">
+              <span title="${url}">${url}</span>
+            `;
+            container.appendChild(item);
+          });
+        }
+      );
     } catch (e) {
       console.error("[PhishingGuard] 목록 로드 실패:", e);
       container.textContent = "로드 실패";
