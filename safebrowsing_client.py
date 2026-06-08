@@ -1,21 +1,20 @@
 import httpx
 import os
 from dotenv import load_dotenv
+from typing import Optional, Tuple, Dict
 
 # .env 로드 (API 키 준비)
 load_dotenv()
 GOOGLE_API_KEY = os.environ.get("GOOGLE_SAFE_BROWSING_API_KEY")
 
-# --- 내부 상태값 정의 ---
-# decision_engine.py와 공유할 상수 (constant)
+# 엔진쪽이랑 같이 쓸 상수들
 GSB_STATUS_DANGEROUS = "DANGEROUS"
 GSB_STATUS_SAFE = "SAFE"
 
-async def check_safe_browsing(url: str, client: httpx.AsyncClient) -> tuple[str, dict | None]:
-    """
-    Google Safe Browsing API를 호출하고, 내부용으로 정제된 상태를 반환합니다.
-    (반환값: 상태, 원본 응답)
-    """
+async def check_safe_browsing(
+    url: str, client: httpx.AsyncClient
+) -> Tuple[str, Optional[Dict]]:
+    # GSB api 쏴서 위험/안전 상태 리턴하는 함수
     if not GOOGLE_API_KEY:
         raise ValueError("GOOGLE_SAFE_BROWSING_API_KEY가 .env에 설정되지 않았습니다.")
 
@@ -42,6 +41,5 @@ async def check_safe_browsing(url: str, client: httpx.AsyncClient) -> tuple[str,
 
     except httpx.RequestError as e:
         print(f"Google Safe Browsing API 오류: {e}")
-        # 에러가 나면 기본값을 반환하지 않고, 에러를 그대로 발생시켜
-        # decision_engine이나 main.py가 처리하도록 함
+        # 여기서 에러잡지말고 호출한쪽에서 처리하라고 던짐
         raise e

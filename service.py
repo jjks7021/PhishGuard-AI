@@ -6,9 +6,7 @@ from typing import List, Optional
 from db import get_connection
 
 
-# --------------------------------------------------------
-# URL 정규화 함수 분리
-# --------------------------------------------------------
+# URL 파싱 공통부분
 
 def _normalize_common_base(url: str):
     """
@@ -64,11 +62,7 @@ def _remove_tracking_params(raw_query: str) -> str:
     return urlencode(clean_params, doseq=True) if clean_params else ""
 
 
-# ✅ 개인 차단용 (override):
-#    - 네이버 검색: query만 유지
-#    - 네이버 블로그: 쿼리 전체 버림
-#    - 구글 검색: q만 유지
-#    - 그 외: 트래킹만 제거하고 쿼리 살림
+# 수동차단용 url 정리함수 (검색어 파라미터만 살리기)
 def normalize_url_for_override(url: str) -> str:
     p, scheme, host, path, query = _normalize_common_base(url)
 
@@ -100,11 +94,7 @@ def normalize_url_for_override(url: str) -> str:
     return urlunparse((scheme, host, path, "", clean_query, ""))
 
 
-# ✅ AI 캐시 / 전역 차단 해시용:
-#    - 네이버 검색: query 기준으로만 분리
-#    - 구글 검색: q 기준
-#    - 네이버 블로그: 쿼리 제거
-#    - 그 외: 트래킹만 제거하고 쿼리 유지
+# 캐싱할때 쓸 url 정리. 블로그같은건 뒤에 쿼리 다 뗌
 def normalize_url_for_cache(url: str) -> str:
     p, scheme, host, path, query = _normalize_common_base(url)
 
@@ -135,7 +125,7 @@ def normalize_url_for_cache(url: str) -> str:
     return urlunparse((scheme, host, path, "", clean_query, ""))
 
 
-# ✅ 기존 코드 호환용 (개인 오버라이드 기준)
+# 예전코드 안터지게 냅둠
 def normalize_url(url: str) -> str:
     return normalize_url_for_override(url)
 
@@ -173,9 +163,7 @@ def _get_or_create_user_id(client_id: str) -> int:
         conn.close()
 
 
-# --------------------------------------------------------
-# 🔥 전역 차단 등록 (AI 이유 + 추천 URL 저장)
-# --------------------------------------------------------
+# 모두에게 적용되는 전역차단 등록
 def add_global_block(
     url: str,
     ai_reason: Optional[str] = None,
@@ -223,13 +211,7 @@ def add_global_block(
         conn.close()
 
 
-# --------------------------------------------------------
-# URL 차단 여부 확인
-#   반환값:
-#   2 = 전역 차단 (phishing_sites: 도메인/URL)
-#   1 = 개인 차단 (user_url_overrides, decision=1)
-#   0 = 차단 아님 / 허용
-# --------------------------------------------------------
+# 디비 뒤져서 차단할지 말지 정하는 함수 (2:전역, 1:개인, 0:통과)
 def check_url(client_id: str, url: str) -> int:
     # 두 가지 기준으로 따로 정규화
     normalized_override = normalize_url_for_override(url)  # 개인 오버라이드용
